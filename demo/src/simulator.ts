@@ -1,7 +1,4 @@
-import { createArm, score, update, selectTopK } from '@navbandit/linucb'
-import { buildContext } from '@navbandit/context'
-import type { ContextMetadata } from '@navbandit/context'
-import type { BanditConfig, BanditState, Prediction } from '@navbandit/types'
+import { createArm, ucbScore, selectTopK, type Arm } from '@navbandit/ucb1'
 import type { Site } from './sites'
 
 export interface LogEntry {
@@ -13,97 +10,95 @@ export interface LogEntry {
 export interface ArmDetail {
   url: string
   ucb: number
-  mean: number
-  exploration: number
+  rewardRate: number
   pulls: number
   lastSeen: number
   isPredicted: boolean
+}
+
+export interface SimConfig {
+  alpha: number
+  topK: number
+}
+
+export interface SimPrediction {
+  url: string
+  score: number
 }
 
 export interface SimSnapshot {
   currentPage: string
   stepCount: number
   arms: ArmDetail[]
-  predictions: Prediction[]
-  context: number[]
-  contextLabels: string[]
+  predictions: SimPrediction[]
   log: LogEntry[]
-  config: BanditConfig
+  config: SimConfig
 }
 
-const CONTEXT_LABELS = [
-  'Route Hash',
-  'Hour',
-  'Session Depth',
-  'Connection',
-  'Is Return',
-  'Time Since Nav',
-  'Scroll Depth',
-  'Referrer Type',
-]
-
-const DEFAULTS: BanditConfig = {
-  alpha: 1.0,
-  discount: 0.95,
-  dimensions: 8,
+const DEFAULTS: SimConfig = {
+  alpha: 1.5,
   topK: 3,
-  pruneAfter: 50,
+}
+
+interface PageState {
+  arms: Record<string, Arm>
+  totalPulls: number
 }
 
 export class Simulator extends EventTarget {
-  private state: BanditState
-  private meta: ContextMetadata
-  private config: BanditConfig
-  private lastPredictions: Prediction[] = []
+  private pages: Record<string, PageState> = {}
+  private config: SimConfig
+  private lastPredictions: string[] = []
   private currentPage = '/'
   private stepCount = 0
   private log: LogEntry[] = []
-  private lastContext: number[] = new Array(8).fill(0)
   private site: Site
   private autoPlayTimer: ReturnType<typeof setInterval> | null = null
 
-  constructor(site: Site, config?: Partial<BanditConfig>) {
+  constructor(site: Site, config?: Partial<SimConfig>) {
     super()
     this.site = site
     this.config = { ...DEFAULTS, ...config }
-    this.state = { arms: {}, totalPulls: 0, sessionId: 'sim' }
-    this.meta = { sessionDepth: 0, visitedUrls: new Set(), lastNavTime: undefined, scrollDepth: 0 }
-    // Initialize arms for starting page links
     this.initPage('/')
+  }
+
+  private ensurePage(path: string): PageState {
+    if (!this.pages[path]) {
+      this.pages[path] = { arms: {}, totalPulls: 0 }
+    }
+    return this.pages[path]
   }
 
   private initPage(url: string): void {
     const page = this.site.pages[url]
     if (!page) return
-    const d = this.config.dimensions
-    if (!this.state.arms[url]) {
-      this.state.arms[url] = createArm(d)
-      this.state.arms[url].lastSeen = this.state.totalPulls
-    }
+    const ps = this.ensurePage(url)
     for (const link of page.links) {
-      if (!this.state.arms[link]) {
-        this.state.arms[link] = createArm(d)
-        this.state.arms[link].lastSeen = this.state.totalPulls
+      if (!ps.arms[link]) {
+        ps.arms[link] = createArm(0)
       }
     }
   }
 
   navigate(url: string): void {
-    const { alpha, discount, topK, dimensions: d } = this.config
+    const { alpha, topK } = this.config
     this.stepCount++
     const step = this.stepCount
 
     // Check for reward — was this URL predicted?
     let rewarded = false
-    for (const pred of this.lastPredictions) {
-      if (pred.url === url) {
-        const arm = this.state.arms[pred.url]
+    const prevPage = this.pages[this.currentPage]
+    if (prevPage) {
+      for (const predUrl of this.lastPredictions) {
+        const arm = prevPage.arms[predUrl]
         if (arm) {
-          const ctx = buildContext(pred.url, this.meta)
-          update(arm, ctx, 1.0, discount)
-          rewarded = true
+          if (predUrl === url) {
+            arm.rewards++
+            rewarded = true
+          }
+          arm.pulls++
+          prevPage.totalPulls++
         }
-        break
       }
     }
 
@@ -112,73 +107,56 @@ export class Simulator extends EventTarget {
       this.pushLog(step, 'reward', `Reward: ${url} was predicted (+1.0)`)
     }
 
-    // Update metadata
-    this.meta.sessionDepth = (this.meta.sessionDepth ?? 0) + 1
-    this.meta.visitedUrls!.add(url)
-    this.meta.lastNavTime = Date.now()
-    this.meta.scrollDepth = 0
-    this.state.totalPulls++
     this.currentPage = url
 
-    // Ensure navigated URL has an arm
-    if (!this.state.arms[url]) {
-      this.state.arms[url] = createArm(d)
-    }
-    this.state.arms[url].lastSeen = this.state.totalPulls
+    // Ensure page and arms exist
+    this.initPage(url)
+    const currentPageState = this.ensurePage(url)
 
     // Discover links from site topology
     const page = this.site.pages[url]
     if (page) {
       let discovered = 0
       for (const link of page.links) {
-        if (!this.state.arms[link]) {
-          this.state.arms[link] = createArm(d)
+        if (!currentPageState.arms[link]) {
+          currentPageState.arms[link] = createArm(this.stepCount)
           discovered++
         }
-        this.state.arms[link].lastSeen = this.state.totalPulls
+        currentPageState.arms[link].lastSeen = this.stepCount
       }
       if (discovered > 0) {
         this.pushLog(step, 'discover', `Discovered ${discovered} new link${discovered > 1 ? 's' : ''}`)
       }
     }
 
-    // Build context and generate predictions (only from outgoing links)
-    this.lastContext = buildContext(url, this.meta)
-    const candidateArms: Record<string, typeof this.state.arms[string]> = {}
-    if (page) {
-      for (const link of page.links) {
-        if (this.state.arms[link]) {
-          candidateArms[link] = this.state.arms[link]
-        }
-      }
-    }
-    this.lastPredictions = selectTopK(candidateArms, this.lastContext, topK, alpha)
+    // Generate predictions from current page's arms
+    this.lastPredictions = selectTopK(
+      currentPageState.arms,
+      Math.max(1, currentPageState.totalPulls),
+      topK,
+      alpha
+    )
 
     const predStr = this.lastPredictions
-      .map((p) => `${p.url} (${p.score.toFixed(2)})`)
+      .map((url) => {
+        const arm = currentPageState.arms[url]
+        const score = arm ? ucbScore(arm, Math.max(1, currentPageState.totalPulls), alpha) : 0
+        return `${url} (${isFinite(score) ? score.toFixed(2) : '∞'})`
+      })
       .join(', ')
     this.pushLog(step, 'predictions', `Predictions: ${predStr}`)
 
     this.emit()
   }
 
-  setConfig(partial: Partial<BanditConfig>): void {
+  setConfig(partial: Partial<SimConfig>): void {
     Object.assign(this.config, partial)
-    // Re-score with new config (only outgoing links)
-    if (this.currentPage) {
-      this.lastContext = buildContext(this.currentPage, this.meta)
-      const page = this.site.pages[this.currentPage]
-      const candidateArms: Record<string, typeof this.state.arms[string]> = {}
-      if (page) {
-        for (const link of page.links) {
-          if (this.state.arms[link]) {
-            candidateArms[link] = this.state.arms[link]
-          }
-        }
-      }
+    // Re-score with new config
+    const currentPageState = this.pages[this.currentPage]
+    if (currentPageState) {
       this.lastPredictions = selectTopK(
-        candidateArms,
-        this.lastContext,
+        currentPageState.arms,
+        Math.max(1, currentPageState.totalPulls),
         this.config.topK,
         this.config.alpha
       )
@@ -192,14 +170,11 @@ export class Simulator extends EventTarget {
   }
 
   reset(): void {
-    const d = this.config.dimensions
-    this.state = { arms: {}, totalPulls: 0, sessionId: 'sim-' + Date.now() }
-    this.meta = { sessionDepth: 0, visitedUrls: new Set(), lastNavTime: undefined, scrollDepth: 0 }
+    this.pages = {}
     this.lastPredictions = []
     this.currentPage = '/'
     this.stepCount = 0
     this.log = []
-    this.lastContext = new Array(d).fill(0)
     this.initPage('/')
     this.emit()
   }
@@ -227,29 +202,35 @@ export class Simulator extends EventTarget {
 
   snapshot(): SimSnapshot {
     const { alpha } = this.config
-    const predictedUrls = new Set(this.lastPredictions.map((p) => p.url))
+    const predictedUrls = new Set(this.lastPredictions)
+    const currentPageState = this.pages[this.currentPage]
 
-    const arms: ArmDetail[] = Object.entries(this.state.arms).map(([url, arm]) => {
-      const s = score(arm, this.lastContext, alpha)
-      return {
-        url,
-        ucb: s.ucb,
-        mean: s.mean,
-        exploration: s.exploration,
-        pulls: arm.pulls,
-        lastSeen: arm.lastSeen,
-        isPredicted: predictedUrls.has(url),
-      }
+    const arms: ArmDetail[] = currentPageState
+      ? Object.entries(currentPageState.arms).map(([url, arm]) => {
+          const score = ucbScore(arm, Math.max(1, currentPageState.totalPulls), alpha)
+          return {
+            url,
+            ucb: score,
+            rewardRate: arm.pulls > 0 ? arm.rewards / arm.pulls : 0,
+            pulls: arm.pulls,
+            lastSeen: arm.lastSeen,
+            isPredicted: predictedUrls.has(url),
+          }
+        })
+      : []
+    arms.sort((a, b) => (isFinite(b.ucb) ? b.ucb : 1e9) - (isFinite(a.ucb) ? a.ucb : 1e9))
+
+    const predictions: SimPrediction[] = this.lastPredictions.map((url) => {
+      const arm = currentPageState?.arms[url]
+      const score = arm ? ucbScore(arm, Math.max(1, currentPageState!.totalPulls), alpha) : Infinity
+      return { url, score }
     })
-    arms.sort((a, b) => b.ucb - a.ucb)
 
     return {
       currentPage: this.currentPage,
       stepCount: this.stepCount,
       arms,
-      predictions: this.lastPredictions,
-      context: this.lastContext,
-      contextLabels: CONTEXT_LABELS,
+      predictions,
       log: this.log,
       config: { ...this.config },
     }

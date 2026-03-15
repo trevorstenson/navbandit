@@ -1,6 +1,5 @@
 import { blog } from './sites'
-import { createArm, selectTopK, update } from '@navbandit/linucb'
-import type { ArmState, Prediction } from '@navbandit/types'
+import { createArm, selectTopK, ucbScore, type Arm } from '@navbandit/ucb1'
 import { createGraphRenderer, type EdgeState } from './viz/graph-renderer'
 import { NAVIGATION_SEQUENCE } from './viz/sequence'
 import './viz/viz-styles.css'
@@ -11,7 +10,7 @@ interface Frame {
   currentPage: string
   naivePrefetched: string[]
   naiveHit: boolean
-  banditPrefetched: Prediction[]
+  banditPrefetched: string[]
   banditHit: boolean
   flashFrom: string
   naiveStats: { totalPrefetches: number; hits: number; wasted: number }
@@ -19,43 +18,37 @@ interface Frame {
 }
 
 function computeAllFrames(): Frame[] {
-  const D = 4
   const ALPHA = 1.5
-  const DISCOUNT = 0.95
   const TOP_K = 2
 
-  const arms: Record<string, ArmState> = {}
-  for (const url of Object.keys(blog.pages)) {
-    arms[url] = createArm(D)
+  // Per-page arms: page -> destination -> arm
+  const pages: Record<string, { arms: Record<string, Arm>; totalPulls: number }> = {}
+
+  function ensurePage(path: string) {
+    if (!pages[path]) pages[path] = { arms: {}, totalPulls: 0 }
+    return pages[path]
   }
 
-  function stableContext(url: string): number[] {
-    let h = 0
-    for (let i = 0; i < url.length; i++) h = ((h << 5) - h + url.charCodeAt(i)) | 0
-    return [((h >>> 0) % 1000) / 1000, 0.5, 0.5, 0.5]
-  }
-
-  function getCandidateArms(page: string): Record<string, ArmState> {
-    const out: Record<string, ArmState> = {}
-    const p = blog.pages[page]
-    if (p) {
-      for (const link of p.links) {
-        if (arms[link]) out[link] = arms[link]
+  function ensureArms(pagePath: string, navCount: number) {
+    const page = ensurePage(pagePath)
+    const links = blog.pages[pagePath]?.links ?? []
+    for (const link of links) {
+      if (!page.arms[link]) {
+        page.arms[link] = createArm(navCount)
       }
     }
-    return out
   }
 
   let currentPage = '/'
-  let lastBanditPreds: Prediction[] = []
-  let lastNaivePrefetched: string[] = []
+  let navCount = 0
+  ensureArms('/', navCount)
 
-  // Seed from '/'
-  const initLinks = blog.pages['/']?.links ?? []
-  lastNaivePrefetched = initLinks
-  lastBanditPreds = selectTopK(getCandidateArms('/'), stableContext('/'), TOP_K, ALPHA)
+  // Initial predictions from '/'
+  const initPage = ensurePage('/')
+  let lastBanditPreds = selectTopK(initPage.arms, Math.max(1, initPage.totalPulls), TOP_K, ALPHA)
+  let lastNaivePrefetched = blog.pages['/']?.links ?? []
 
-  let nTotalPrefetches = initLinks.length
+  let nTotalPrefetches = lastNaivePrefetched.length
   let nHits = 0
   let bTotalPrefetches = lastBanditPreds.length
   let bHits = 0
@@ -64,34 +57,47 @@ function computeAllFrames(): Frame[] {
 
   for (let i = 0; i < NAVIGATION_SEQUENCE.length; i++) {
     const nextPage = NAVIGATION_SEQUENCE[i]
+    navCount++
 
     // Check hits against PREVIOUS page's prefetches
     const naiveHit = lastNaivePrefetched.includes(nextPage)
-    const banditHit = lastBanditPreds.some((p) => p.url === nextPage)
+    const banditHit = lastBanditPreds.includes(nextPage)
 
     if (naiveHit) nHits++
     if (banditHit) bHits++
 
-    // Reward bandit arm if hit
-    if (banditHit && arms[nextPage]) {
-      update(arms[nextPage], stableContext(currentPage), 1.0, DISCOUNT)
+    // Update arms on the previous page
+    const prevPage = ensurePage(currentPage)
+    for (const predUrl of lastBanditPreds) {
+      const arm = prevPage.arms[predUrl]
+      if (arm) {
+        if (predUrl === nextPage) {
+          arm.rewards++
+        }
+        arm.pulls++
+        prevPage.totalPulls++
+      }
     }
 
     const flashFrom = currentPage
     currentPage = nextPage
 
+    // Ensure arms exist for the new page
+    ensureArms(nextPage, navCount)
+
     // New prefetches from the new page
     const newNaiveLinks = blog.pages[nextPage]?.links ?? []
     nTotalPrefetches += newNaiveLinks.length
 
-    const newBanditPreds = selectTopK(getCandidateArms(nextPage), stableContext(nextPage), TOP_K, ALPHA)
+    const newPage = ensurePage(nextPage)
+    const newBanditPreds = selectTopK(newPage.arms, Math.max(1, newPage.totalPulls), TOP_K, ALPHA)
     bTotalPrefetches += newBanditPreds.length
 
     frames.push({
       currentPage: nextPage,
       naivePrefetched: newNaiveLinks,
       naiveHit,
-      banditPrefetched: newBanditPreds.map((p) => ({ ...p })),
+      banditPrefetched: [...newBanditPreds],
       banditHit,
       flashFrom,
       naiveStats: { totalPrefetches: nTotalPrefetches, hits: nHits, wasted: nTotalPrefetches - nHits },
@@ -193,25 +199,11 @@ function renderStats(el: HTMLElement, stats: { totalPrefetches: number; hits: nu
   `
 }
 
-function buildSpecRulesJSON(urls: string[], eagernessMap?: Map<string, string>): string {
+function buildSpecRulesJSON(urls: string[]): string {
   if (urls.length === 0) return '{ "prefetch": [] }'
-  if (!eagernessMap) {
-    // Naive: all eager
-    return JSON.stringify({
-      prefetch: [{ source: 'list', urls, eagerness: 'eager' }]
-    }, null, 2)
-  }
-  // Bandit: group by eagerness
-  const groups: Record<string, string[]> = {}
-  for (const url of urls) {
-    const e = eagernessMap.get(url) ?? 'moderate'
-    if (!groups[e]) groups[e] = []
-    groups[e].push(url)
-  }
-  const rules = Object.entries(groups).map(([eagerness, u]) => ({
-    source: 'list', urls: u, eagerness,
-  }))
-  return JSON.stringify({ prefetch: rules }, null, 2)
+  return JSON.stringify({
+    prefetch: [{ source: 'list', urls, eagerness: 'moderate' }]
+  }, null, 2)
 }
 
 function renderFrame(index: number) {
@@ -239,10 +231,10 @@ function renderFrame(index: number) {
     flash: { from: f.flashFrom, to: f.currentPage, type: f.naiveHit ? 'hit' : 'miss' },
   })
 
-  // Bandit graph
+  // Bandit graph — all predictions shown as 'prefetched' (green)
   const banditEdges = new Map<string, EdgeState>()
-  for (const pred of f.banditPrefetched) {
-    banditEdges.set(pred.url, `prefetched-${pred.eagerness}` as EdgeState)
+  for (const url of f.banditPrefetched) {
+    banditEdges.set(url, 'prefetched-moderate')
   }
   banditGraph.update({
     currentPage: f.currentPage,
@@ -255,11 +247,7 @@ function renderFrame(index: number) {
 
   // Speculation Rules JSON
   naiveSpecEl.textContent = buildSpecRulesJSON(f.naivePrefetched)
-  const banditEagernessMap = new Map(f.banditPrefetched.map((p) => [p.url, p.eagerness]))
-  banditSpecEl.textContent = buildSpecRulesJSON(
-    f.banditPrefetched.map((p) => p.url),
-    banditEagernessMap
-  )
+  banditSpecEl.textContent = buildSpecRulesJSON(f.banditPrefetched)
 
   const step = index + 1
   stepLabelEl.textContent = `Step ${step}/${frames.length}`

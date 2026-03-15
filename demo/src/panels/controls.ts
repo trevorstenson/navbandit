@@ -4,7 +4,6 @@ import { allSites } from '../sites'
 
 interface ControlCallbacks {
   onAlphaChange: (v: number) => void
-  onDiscountChange: (v: number) => void
   onTopKChange: (v: number) => void
   onSiteChange: (site: Site) => void
   onReset: () => void
@@ -25,14 +24,8 @@ export function createControls(container: HTMLElement, callbacks: ControlCallbac
         </div>
         <div class="control-group">
           <label>Alpha (exploration)
-            <input type="range" id="ctl-alpha" min="0.1" max="5" step="0.1" value="1">
-            <span id="ctl-alpha-val">1.0</span>
-          </label>
-        </div>
-        <div class="control-group">
-          <label>Discount (adaptation)
-            <input type="range" id="ctl-discount" min="0.5" max="1" step="0.01" value="0.95">
-            <span id="ctl-discount-val">0.95</span>
+            <input type="range" id="ctl-alpha" min="0.1" max="5" step="0.1" value="1.5">
+            <span id="ctl-alpha-val">1.5</span>
           </label>
         </div>
         <div class="control-group">
@@ -52,8 +45,6 @@ export function createControls(container: HTMLElement, callbacks: ControlCallbac
 
   const alphaSlider = container.querySelector<HTMLInputElement>('#ctl-alpha')!
   const alphaVal = container.querySelector('#ctl-alpha-val')!
-  const discountSlider = container.querySelector<HTMLInputElement>('#ctl-discount')!
-  const discountVal = container.querySelector('#ctl-discount-val')!
   const topkSlider = container.querySelector<HTMLInputElement>('#ctl-topk')!
   const topkVal = container.querySelector('#ctl-topk-val')!
   const siteSelect = container.querySelector<HTMLSelectElement>('#ctl-site')!
@@ -64,12 +55,6 @@ export function createControls(container: HTMLElement, callbacks: ControlCallbac
     const v = parseFloat(alphaSlider.value)
     alphaVal.textContent = v.toFixed(1)
     callbacks.onAlphaChange(v)
-  })
-
-  discountSlider.addEventListener('input', () => {
-    const v = parseFloat(discountSlider.value)
-    discountVal.textContent = v.toFixed(2)
-    callbacks.onDiscountChange(v)
   })
 
   topkSlider.addEventListener('input', () => {

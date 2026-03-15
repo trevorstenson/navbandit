@@ -1,14 +1,53 @@
 # navbandit
 
-LinUCB contextual bandit that learns which pages to prefetch from a user's navigation patterns. It runs in a Service Worker, watches navigations, and sends predictions to the [Speculation Rules API](https://developer.chrome.com/docs/web-platform/prerender-pages). 100% client-side.
+Learns which pages to prefetch by watching how users navigate your site. One script tag, zero config, under 1.5KB gzipped.
 
-## Install
+## Quick Start
+
+```html
+<script src="https://unpkg.com/navbandit"></script>
+```
+
+That's it. NavBandit will automatically:
+
+1. Discover same-origin links on each page
+2. Learn which links users actually click (per page)
+3. Prefetch the most likely next pages before the user clicks
+4. Get smarter with every navigation
+
+## How it works
+
+NavBandit uses a [UCB1 bandit algorithm](https://en.wikipedia.org/wiki/Multi-armed_bandit#Upper_confidence_bound) to balance exploration (trying uncertain links) with exploitation (prefetching links that have been clicked before). Each page maintains its own set of arms — so predictions from `/pricing` are independent of predictions from `/docs`.
+
+**Prefetch strategy** (best available method, detected automatically):
+
+1. [Speculation Rules API](https://developer.chrome.com/docs/web-platform/prerender-pages) on Chrome/Edge 121+
+2. `<link rel="prefetch">` on browsers that support it
+3. `fetch()` with low priority as a universal fallback
+
+**Bandwidth-aware**: Respects `navigator.connection.saveData` and `effectiveType`. Backs off or disables prefetching on slow connections — the model still learns from clicks, so it's ready when bandwidth returns.
+
+**State**: Persists in `localStorage` across sessions. Each arm stores just 3 numbers (pulls, rewards, lastSeen), so the footprint is tiny.
+
+## npm Install
 
 ```bash
 npm install navbandit
 ```
 
-## Usage
+```js
+import 'navbandit'
+```
+
+Or reference the built file directly:
+
+```html
+<script src="node_modules/navbandit/dist/navbandit.global.js"></script>
+```
+
+## Advanced: Service Worker Mode
+
+For sites that want contextual learning (predictions based on time of day, session depth, scroll behavior, connection type), NavBandit also offers a Service Worker mode using a [LinUCB contextual bandit](https://arxiv.org/abs/1003.0146) with IndexedDB persistence.
 
 **Service Worker** (`sw.ts`):
 
@@ -30,9 +69,7 @@ import { createBanditClient } from 'navbandit/client'
 const cleanup = createBanditClient()
 ```
 
-The client finds same-origin links on each page, listens for predictions from the service worker, and inserts `<script type="speculationrules">` rules. In browsers without Speculation Rules support, it falls back to `<link rel="prefetch">`. If the user later navigates to a predicted URL, the service worker records that reward automatically.
-
-## Config
+### SW Mode Config
 
 | Option | Default | Description |
 |--------|---------|-------------|
@@ -42,16 +79,11 @@ The client finds same-origin links on each page, listens for predictions from th
 | `topK` | `3` | URLs to prefetch per navigation |
 | `pruneAfter` | `50` | Drop arms not seen in this many navigations |
 
-## How it works
-
-On each navigation, the service worker builds an 8-dimensional context vector from things like route hash, time of day, session depth, and connection type. It scores the known URLs with LinUCB and sends the top `K` predictions to the main thread with `postMessage()`. The main thread then inserts Speculation Rules using confidence levels like `eager`, `moderate`, and `conservative`.
-
-When a user navigates to a predicted URL, the bandit records a reward of `1` and updates that arm with a Sherman-Morrison rank-1 update, so it does not need to invert a matrix on every step. DUCB discounting helps it adapt as navigation patterns change. State is stored in IndexedDB across sessions.
-
 ## Browser support
 
 - **Chrome/Edge 121+**: Speculation Rules API with eagerness levels
-- **Other browsers**: falls back to `<link rel="prefetch">`
+- **Other modern browsers**: `<link rel="prefetch">` fallback
+- **Everything else**: `fetch()` with low priority
 
 ## License
 

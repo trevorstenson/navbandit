@@ -1,70 +1,17 @@
 import type { Prediction, SWMessage } from './types'
-import { insertPrefetchLinks, removePrefetchLinks } from './fallback'
+import {
+  supportsSpeculationRules,
+  insertSpeculationRules,
+  removeSpeculationRules,
+  insertPrefetchLinks,
+  removePrefetchLinks,
+  discoverLinks,
+} from './prefetch'
+import { checkBandwidth } from './bandwidth'
 
 export interface ClientOptions {
   /** Throttle interval (ms) for scroll depth reporting. Default: 1000 */
   scrollThrottleMs?: number
-}
-
-/** Detect if the browser supports Speculation Rules API */
-function supportsSpeculationRules(): boolean {
-  return typeof HTMLScriptElement !== 'undefined' &&
-    'supports' in HTMLScriptElement &&
-    (HTMLScriptElement as any).supports('speculationrules')
-}
-
-/** Insert a <script type="speculationrules"> element */
-function insertSpeculationRules(predictions: Prediction[]): void {
-  // Remove any existing navbandit speculation rules
-  removeSpeculationRules()
-
-  if (predictions.length === 0) return
-
-  // Group by eagerness
-  const groups: Record<string, string[]> = { eager: [], moderate: [], conservative: [] }
-  for (const p of predictions) {
-    groups[p.eagerness].push(p.url)
-  }
-
-  const rules: any[] = []
-  for (const [eagerness, urls] of Object.entries(groups)) {
-    if (urls.length > 0) {
-      rules.push({
-        source: 'list',
-        urls,
-        eagerness,
-      })
-    }
-  }
-
-  const script = document.createElement('script')
-  script.type = 'speculationrules'
-  script.dataset.navbandit = 'true'
-  script.textContent = JSON.stringify({ prefetch: rules })
-  document.head.appendChild(script)
-}
-
-function removeSpeculationRules(): void {
-  const existing = document.querySelectorAll<HTMLScriptElement>('script[data-navbandit]')
-  for (const el of existing) el.remove()
-}
-
-/** Discover same-origin <a> links on the page */
-function discoverLinks(): string[] {
-  const origin = location.origin
-  const urls = new Set<string>()
-  const anchors = document.querySelectorAll<HTMLAnchorElement>('a[href]')
-  for (const a of anchors) {
-    try {
-      const url = new URL(a.href, origin)
-      if (url.origin === origin && url.pathname !== location.pathname) {
-        urls.add(url.href)
-      }
-    } catch {
-      // invalid URL, skip
-    }
-  }
-  return Array.from(urls)
 }
 
 /** Send a message to the controlling service worker */
@@ -86,10 +33,15 @@ export function createBanditClient(options?: ClientOptions): () => void {
     const msg = event.data as SWMessage
     if (msg?.type !== 'navbandit:predictions') return
 
+    const { shouldPrefetch, maxPrefetches } = checkBandwidth()
+    if (!shouldPrefetch) return
+
+    const limited = msg.predictions.slice(0, maxPrefetches)
+
     if (useSpecRules) {
-      insertSpeculationRules(msg.predictions)
+      insertSpeculationRules(limited)
     } else {
-      insertPrefetchLinks(msg.predictions.map((p) => p.url))
+      insertPrefetchLinks(limited.map((p) => p.url))
     }
   }
 

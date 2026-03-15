@@ -12,6 +12,14 @@
     "url": "https://github.com/trevorstenson/navbandit/issues"
   },
   "exports": {
+    ".": {
+      "import": "./dist/navbandit.js",
+      "default": "./dist/navbandit.global.js"
+    },
+    "./standalone": {
+      "import": "./dist/navbandit.js",
+      "default": "./dist/navbandit.global.js"
+    },
     "./sw": {
       "types": "./dist/sw.d.ts",
       "import": "./dist/sw.js",
@@ -28,6 +36,8 @@
       "require": "./dist/fallback.cjs"
     }
   },
+  "unpkg": "./dist/navbandit.global.js",
+  "jsdelivr": "./dist/navbandit.global.js",
   "files": [
     "dist"
   ],

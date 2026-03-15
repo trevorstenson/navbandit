@@ -12,15 +12,11 @@ export function createPredictionPanel(container: HTMLElement) {
       }
 
       const speculationRules = {
-        prefetch: Object.entries(
-          snap.predictions.reduce(
-            (groups, p) => {
-              ;(groups[p.eagerness] ??= []).push(p.url)
-              return groups
-            },
-            {} as Record<string, string[]>
-          )
-        ).map(([eagerness, urls]) => ({ source: 'list', urls, eagerness })),
+        prefetch: [{
+          source: 'list',
+          urls: snap.predictions.map((p) => p.url),
+          eagerness: 'moderate',
+        }],
       }
 
       content.innerHTML = `
@@ -33,11 +29,10 @@ export function createPredictionPanel(container: HTMLElement) {
                 <div class="prediction-info">
                   <div class="prediction-url">${p.url}</div>
                   <div class="prediction-meta">
-                    Score: ${p.score.toFixed(3)} &middot;
-                    Confidence: ${(p.confidence * 100).toFixed(0)}%
+                    UCB Score: ${isFinite(p.score) ? p.score.toFixed(3) : '∞'}
                   </div>
                 </div>
-                <span class="eagerness-badge ${p.eagerness}">${p.eagerness}</span>
+                <span class="eagerness-badge moderate">predicted</span>
               </div>
             `
             )
