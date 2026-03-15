@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Contextual bandit prefetching — learns which pages to prefetch per-user in real-time via LinUCB + Speculation Rules API",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/trevorstenson/precog.git"
+  },
+  "homepage": "https://github.com/trevorstenson/precog#readme",
+  "bugs": {
+    "url": "https://github.com/trevorstenson/precog/issues"
+  },
   "exports": {
     "./sw": {
       "types": "./dist/sw.d.ts",
