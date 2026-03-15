@@ -15,7 +15,7 @@ function supportsSpeculationRules(): boolean {
 
 /** Insert a <script type="speculationrules"> element */
 function insertSpeculationRules(predictions: Prediction[]): void {
-  // Remove any existing precog speculation rules
+  // Remove any existing navbandit speculation rules
   removeSpeculationRules()
 
   if (predictions.length === 0) return
@@ -39,13 +39,13 @@ function insertSpeculationRules(predictions: Prediction[]): void {
 
   const script = document.createElement('script')
   script.type = 'speculationrules'
-  script.dataset.precog = 'true'
+  script.dataset.navbandit = 'true'
   script.textContent = JSON.stringify({ prefetch: rules })
   document.head.appendChild(script)
 }
 
 function removeSpeculationRules(): void {
-  const existing = document.querySelectorAll<HTMLScriptElement>('script[data-precog]')
+  const existing = document.querySelectorAll<HTMLScriptElement>('script[data-navbandit]')
   for (const el of existing) el.remove()
 }
 
@@ -84,7 +84,7 @@ export function createBanditClient(options?: ClientOptions): () => void {
   // Handle predictions from SW
   function onMessage(event: MessageEvent) {
     const msg = event.data as SWMessage
-    if (msg?.type !== 'precog:predictions') return
+    if (msg?.type !== 'navbandit:predictions') return
 
     if (useSpecRules) {
       insertSpeculationRules(msg.predictions)
@@ -99,7 +99,7 @@ export function createBanditClient(options?: ClientOptions): () => void {
   function onLoad() {
     const urls = discoverLinks()
     if (urls.length > 0) {
-      sendToSW({ type: 'precog:discover-links', urls })
+      sendToSW({ type: 'navbandit:discover-links', urls })
     }
   }
 
@@ -116,7 +116,7 @@ export function createBanditClient(options?: ClientOptions): () => void {
     scrollTimer = setTimeout(() => {
       scrollTimer = null
       const depth = window.scrollY / (document.documentElement.scrollHeight - window.innerHeight || 1)
-      sendToSW({ type: 'precog:scroll-depth', depth: Math.min(1, Math.max(0, depth)) })
+      sendToSW({ type: 'navbandit:scroll-depth', depth: Math.min(1, Math.max(0, depth)) })
     }, scrollThrottleMs)
   }
 

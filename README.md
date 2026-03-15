@@ -1,11 +1,11 @@
-# precog
+# navbandit
 
 LinUCB contextual bandit that learns which pages to prefetch per-user. Runs in a Service Worker, observes navigations, and feeds predictions into the [Speculation Rules API](https://developer.chrome.com/docs/web-platform/prerender-pages). No dependencies, no server.
 
 ## Install
 
 ```bash
-npm install precog
+npm install navbandit
 ```
 
 ## Usage
@@ -13,7 +13,7 @@ npm install precog
 **Service Worker** (`sw.ts`):
 
 ```typescript
-import { createBanditSW } from 'precog/sw'
+import { createBanditSW } from 'navbandit/sw'
 
 const bandit = createBanditSW({ discount: 0.95, alpha: 1.0 })
 self.addEventListener('fetch', (e) => bandit.handleFetch(e))
@@ -25,7 +25,7 @@ self.addEventListener('message', (e) => bandit.handleMessage(e))
 **Main thread** (`main.ts`):
 
 ```typescript
-import { createBanditClient } from 'precog/client'
+import { createBanditClient } from 'navbandit/client'
 
 const cleanup = createBanditClient()
 ```

@@ -37,9 +37,9 @@ export interface Prediction {
 
 // SW ↔ main thread message protocol (prefixed to avoid collisions in shared SWs)
 export type SWMessage =
-  | { type: 'precog:predictions'; predictions: Prediction[] }
+  | { type: 'navbandit:predictions'; predictions: Prediction[] }
 
 export type ClientMessage =
-  | { type: 'precog:discover-links'; urls: string[] }
-  | { type: 'precog:reward'; url: string; value: number }
-  | { type: 'precog:scroll-depth'; depth: number }
+  | { type: 'navbandit:discover-links'; urls: string[] }
+  | { type: 'navbandit:reward'; url: string; value: number }
+  | { type: 'navbandit:scroll-depth'; depth: number }

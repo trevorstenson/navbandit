@@ -1,21 +1,19 @@
-const PRECOG_PREFIX = 'precog-prefetch-'
-
 /** Insert <link rel="prefetch"> elements for given URLs, removing stale ones */
 export function insertPrefetchLinks(urls: string[]): void {
-  // Remove existing precog prefetch links
+  // Remove existing navbandit prefetch links
   removePrefetchLinks()
 
   for (const url of urls) {
     const link = document.createElement('link')
     link.rel = 'prefetch'
     link.href = url
-    link.dataset.precog = 'true'
+    link.dataset.navbandit = 'true'
     document.head.appendChild(link)
   }
 }
 
-/** Remove all precog-managed prefetch links */
+/** Remove all navbandit-managed prefetch links */
 export function removePrefetchLinks(): void {
-  const existing = document.querySelectorAll<HTMLLinkElement>('link[data-precog]')
+  const existing = document.querySelectorAll<HTMLLinkElement>('link[data-navbandit]')
   for (const el of existing) el.remove()
 }

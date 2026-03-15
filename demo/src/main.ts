@@ -16,7 +16,7 @@ const sim = new Simulator(currentSite)
 const app = document.getElementById('app')!
 app.innerHTML = `
   <header class="app-header">
-    <h1>precog</h1>
+    <h1>navbandit</h1>
     <span class="subtitle">contextual bandit debug dashboard</span>
   </header>
   <div id="controls-slot"></div>

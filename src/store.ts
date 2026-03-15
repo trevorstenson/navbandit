@@ -1,6 +1,6 @@
 import type { BanditState } from './types'
 
-const DB_NAME = 'precog'
+const DB_NAME = 'navbandit'
 const STORE_NAME = 'state'
 const STATE_KEY = 'bandit'
 

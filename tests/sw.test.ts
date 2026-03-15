@@ -81,7 +81,7 @@ describe('createBanditSW', () => {
 
     // Now discover links
     const msgEvent = makeMessageEvent(
-      { type: 'precog:discover-links', urls: ['http://example.com/a', 'http://example.com/b'] },
+      { type: 'navbandit:discover-links', urls: ['http://example.com/a', 'http://example.com/b'] },
       'http://example.com/'
     )
     const msgPromises: Promise<any>[] = []
@@ -111,7 +111,7 @@ describe('createBanditSW', () => {
 
     // Send NaN reward — should be rejected
     const msgEvent = makeMessageEvent({
-      type: 'precog:reward',
+      type: 'navbandit:reward',
       url: 'http://example.com/page',
       value: NaN,
     })
@@ -135,7 +135,7 @@ describe('createBanditSW', () => {
     await Promise.all(waitPromises)
 
     const msgEvent = makeMessageEvent({
-      type: 'precog:reward',
+      type: 'navbandit:reward',
       url: 'http://example.com/page',
       value: Infinity,
     })
@@ -158,7 +158,7 @@ describe('createBanditSW', () => {
     await Promise.all(waitPromises)
 
     const msgEvent = makeMessageEvent({
-      type: 'precog:reward',
+      type: 'navbandit:reward',
       url: 'http://example.com/page',
       value: -5,
     })
@@ -181,7 +181,7 @@ describe('createBanditSW', () => {
     await Promise.all(waitPromises)
 
     const msgEvent = makeMessageEvent({
-      type: 'precog:reward',
+      type: 'navbandit:reward',
       url: 'http://example.com/page',
       value: 0.5,
     })
@@ -206,7 +206,7 @@ describe('createBanditSW', () => {
     await Promise.all(waitPromises)
 
     // Send scroll depth — should not throw
-    const msgEvent = makeMessageEvent({ type: 'precog:scroll-depth', depth: 0.8 })
+    const msgEvent = makeMessageEvent({ type: 'navbandit:scroll-depth', depth: 0.8 })
     const msgPromises: Promise<any>[] = []
     msgEvent.waitUntil = (p: Promise<any>) => { msgPromises.push(p) }
     sw.handleMessage(msgEvent)

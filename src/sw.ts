@@ -55,7 +55,7 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
   async function broadcastPredictions(predictions: Prediction[]): Promise<void> {
     const clients = await self.clients.matchAll({ type: 'window' })
     for (const client of clients) {
-      client.postMessage({ type: 'precog:predictions', predictions })
+      client.postMessage({ type: 'navbandit:predictions', predictions })
     }
   }
 
@@ -123,7 +123,7 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
         const s = await ensureState()
 
         switch (msg.type) {
-          case 'precog:discover-links': {
+          case 'navbandit:discover-links': {
             for (const url of msg.urls) {
               if (!s.arms[url]) {
                 s.arms[url] = createArm(d)
@@ -142,7 +142,7 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
             await saveState(s)
             break
           }
-          case 'precog:reward': {
+          case 'navbandit:reward': {
             const value = msg.value
             if (!Number.isFinite(value) || value < 0 || value > 1) break
             const arm = s.arms[msg.url]
@@ -153,7 +153,7 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
             }
             break
           }
-          case 'precog:scroll-depth': {
+          case 'navbandit:scroll-depth': {
             meta.scrollDepth = msg.depth
             break
           }

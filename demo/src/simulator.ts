@@ -1,7 +1,7 @@
-import { createArm, score, update, selectTopK } from '@precog/linucb'
-import { buildContext } from '@precog/context'
-import type { ContextMetadata } from '@precog/context'
-import type { BanditConfig, BanditState, Prediction } from '@precog/types'
+import { createArm, score, update, selectTopK } from '@navbandit/linucb'
+import { buildContext } from '@navbandit/context'
+import type { ContextMetadata } from '@navbandit/context'
+import type { BanditConfig, BanditState, Prediction } from '@navbandit/types'
 import type { Site } from './sites'
 
 export interface LogEntry {

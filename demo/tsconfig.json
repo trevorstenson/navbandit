@@ -9,7 +9,7 @@
     "forceConsistentCasingInFileNames": true,
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "paths": {
-      "@precog/*": ["../src/*"]
+      "@navbandit/*": ["../src/*"]
     }
   },
   "include": ["src"]
