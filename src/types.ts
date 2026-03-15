@@ -35,11 +35,11 @@ export interface Prediction {
   eagerness: 'eager' | 'moderate' | 'conservative'
 }
 
-// SW ↔ main thread message protocol
+// SW ↔ main thread message protocol (prefixed to avoid collisions in shared SWs)
 export type SWMessage =
-  | { type: 'predictions'; predictions: Prediction[] }
+  | { type: 'precog:predictions'; predictions: Prediction[] }
 
 export type ClientMessage =
-  | { type: 'discover-links'; urls: string[] }
-  | { type: 'reward'; url: string; value: number }
-  | { type: 'scroll-depth'; depth: number }
+  | { type: 'precog:discover-links'; urls: string[] }
+  | { type: 'precog:reward'; url: string; value: number }
+  | { type: 'precog:scroll-depth'; depth: number }

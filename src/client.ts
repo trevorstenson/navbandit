@@ -84,7 +84,7 @@ export function createBanditClient(options?: ClientOptions): () => void {
   // Handle predictions from SW
   function onMessage(event: MessageEvent) {
     const msg = event.data as SWMessage
-    if (msg?.type !== 'predictions') return
+    if (msg?.type !== 'precog:predictions') return
 
     if (useSpecRules) {
       insertSpeculationRules(msg.predictions)
@@ -99,7 +99,7 @@ export function createBanditClient(options?: ClientOptions): () => void {
   function onLoad() {
     const urls = discoverLinks()
     if (urls.length > 0) {
-      sendToSW({ type: 'discover-links', urls })
+      sendToSW({ type: 'precog:discover-links', urls })
     }
   }
 
@@ -116,7 +116,7 @@ export function createBanditClient(options?: ClientOptions): () => void {
     scrollTimer = setTimeout(() => {
       scrollTimer = null
       const depth = window.scrollY / (document.documentElement.scrollHeight - window.innerHeight || 1)
-      sendToSW({ type: 'scroll-depth', depth: Math.min(1, Math.max(0, depth)) })
+      sendToSW({ type: 'precog:scroll-depth', depth: Math.min(1, Math.max(0, depth)) })
     }, scrollThrottleMs)
   }
 
