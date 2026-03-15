@@ -142,9 +142,17 @@ export class Simulator extends EventTarget {
       }
     }
 
-    // Build context and generate predictions
+    // Build context and generate predictions (only from outgoing links)
     this.lastContext = buildContext(url, this.meta)
-    this.lastPredictions = selectTopK(this.state.arms, this.lastContext, topK, alpha)
+    const candidateArms: Record<string, typeof this.state.arms[string]> = {}
+    if (page) {
+      for (const link of page.links) {
+        if (this.state.arms[link]) {
+          candidateArms[link] = this.state.arms[link]
+        }
+      }
+    }
+    this.lastPredictions = selectTopK(candidateArms, this.lastContext, topK, alpha)
 
     const predStr = this.lastPredictions
       .map((p) => `${p.url} (${p.score.toFixed(2)})`)
@@ -156,11 +164,20 @@ export class Simulator extends EventTarget {
 
   setConfig(partial: Partial<BanditConfig>): void {
     Object.assign(this.config, partial)
-    // Re-score with new config
+    // Re-score with new config (only outgoing links)
     if (this.currentPage) {
       this.lastContext = buildContext(this.currentPage, this.meta)
+      const page = this.site.pages[this.currentPage]
+      const candidateArms: Record<string, typeof this.state.arms[string]> = {}
+      if (page) {
+        for (const link of page.links) {
+          if (this.state.arms[link]) {
+            candidateArms[link] = this.state.arms[link]
+          }
+        }
+      }
       this.lastPredictions = selectTopK(
-        this.state.arms,
+        candidateArms,
         this.lastContext,
         this.config.topK,
         this.config.alpha

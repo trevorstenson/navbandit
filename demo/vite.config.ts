@@ -7,4 +7,12 @@ export default defineConfig({
       '@navbandit': path.resolve(__dirname, '../src'),
     },
   },
+  build: {
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        viz: path.resolve(__dirname, 'viz.html'),
+      },
+    },
+  },
 })
