@@ -1,4 +1,13 @@
 import type { Prediction } from './types'
+import {
+  getDiscoverableAnchorUrl,
+  sanitizePrefetchUrls,
+  sanitizePredictions,
+} from './url-policy'
+
+export interface DiscoverLinksOptions {
+  maxLinks?: number
+}
 
 /** Detect if the browser supports Speculation Rules API */
 export function supportsSpeculationRules(): boolean {
@@ -13,10 +22,11 @@ export function supportsSpeculationRules(): boolean {
 export function insertSpeculationRules(predictions: Prediction[]): void {
   removeSpeculationRules()
 
-  if (predictions.length === 0) return
+  const safePredictions = sanitizePredictions(predictions)
+  if (safePredictions.length === 0) return
 
   const groups: Record<string, string[]> = { eager: [], moderate: [], conservative: [] }
-  for (const p of predictions) {
+  for (const p of safePredictions) {
     groups[p.eagerness].push(p.url)
   }
 
@@ -43,7 +53,7 @@ export function removeSpeculationRules(): void {
 export function insertPrefetchLinks(urls: string[]): void {
   removePrefetchLinks()
 
-  for (const url of urls) {
+  for (const url of sanitizePrefetchUrls(urls)) {
     const link = document.createElement('link')
     link.rel = 'prefetch'
     link.href = url
@@ -60,10 +70,14 @@ export function removePrefetchLinks(): void {
 
 /** Prefetch URLs using the best available method */
 export function prefetch(urls: string[]): void {
-  if (urls.length === 0) return
+  const safeUrls = sanitizePrefetchUrls(urls)
+  if (safeUrls.length === 0) {
+    cleanupPrefetch()
+    return
+  }
 
   if (supportsSpeculationRules()) {
-    const predictions: Prediction[] = urls.map((url) => ({
+    const predictions: Prediction[] = safeUrls.map((url) => ({
       url,
       score: 1,
       confidence: 0.5,
@@ -71,9 +85,9 @@ export function prefetch(urls: string[]): void {
     }))
     insertSpeculationRules(predictions)
   } else if (supportsLinkPrefetch()) {
-    insertPrefetchLinks(urls)
+    insertPrefetchLinks(safeUrls)
   } else {
-    fetchPrefetch(urls)
+    fetchPrefetch(safeUrls)
   }
 }
 
@@ -93,25 +107,23 @@ function supportsLinkPrefetch(): boolean {
 }
 
 function fetchPrefetch(urls: string[]): void {
-  for (const url of urls) {
+  for (const url of sanitizePrefetchUrls(urls)) {
     fetch(url, { priority: 'low' } as any).catch(() => {})
   }
 }
 
 /** Discover same-origin <a> links on the page */
-export function discoverLinks(): string[] {
-  const origin = location.origin
+export function discoverLinks(options: DiscoverLinksOptions = {}): string[] {
   const urls = new Set<string>()
   const anchors = document.querySelectorAll<HTMLAnchorElement>('a[href]')
   for (const a of anchors) {
-    try {
-      const url = new URL(a.href, origin)
-      if (url.origin === origin && url.pathname !== location.pathname) {
-        urls.add(url.origin + url.pathname)
-      }
-    } catch {
-      // invalid URL, skip
-    }
+    const url = getDiscoverableAnchorUrl(a, {
+      currentPath: location.pathname,
+      maxUrls: options.maxLinks,
+    })
+    if (!url) continue
+    urls.add(url)
+    if (urls.size >= (options.maxLinks ?? 100)) break
   }
   return Array.from(urls)
 }

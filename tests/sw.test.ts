@@ -8,7 +8,10 @@ const mockPostMessage = vi.fn()
 const mockClients = {
   matchAll: vi.fn().mockResolvedValue([{ postMessage: mockPostMessage }]),
 }
-;(globalThis as any).self = { clients: mockClients }
+;(globalThis as any).self = {
+  clients: mockClients,
+  location: { origin: 'http://example.com' },
+}
 
 vi.spyOn(crypto, 'randomUUID').mockReturnValue('test-uuid' as any)
 
@@ -26,10 +29,10 @@ function makeFetchEvent(url: string, opts?: { mode?: string; purpose?: string })
   }
 }
 
-function makeMessageEvent(data: any, sourceUrl?: string): any {
+function makeMessageEvent(data: any, sourceUrl?: string, postMessage = vi.fn()): any {
   return {
     data,
-    source: sourceUrl ? { url: sourceUrl } : null,
+    source: sourceUrl ? { url: sourceUrl, postMessage } : null,
     waitUntil: (p: Promise<any>) => p,
   }
 }
@@ -94,6 +97,43 @@ describe('createBanditSW', () => {
     expect(state).not.toBeNull()
     expect(state!.arms['http://example.com/a']).toBeDefined()
     expect(state!.arms['http://example.com/b']).toBeDefined()
+  })
+
+  it('discover-links filters unsafe URLs and replies only to the source client', async () => {
+    const sw = createBanditSW()
+
+    const fetchEvent = makeFetchEvent('http://example.com/')
+    const waitPromises: Promise<any>[] = []
+    fetchEvent.waitUntil = (p: Promise<any>) => { waitPromises.push(p) }
+    sw.handleFetch(fetchEvent)
+    await Promise.all(waitPromises)
+
+    mockClients.matchAll.mockClear()
+    const sourcePostMessage = vi.fn()
+    const msgEvent = makeMessageEvent(
+      {
+        type: 'navbandit:discover-links',
+        urls: [
+          'http://example.com/a',
+          'http://example.com/logout',
+          'http://evil.com/pwn',
+          'http://example.com/a?from=dup',
+        ],
+      },
+      'http://example.com/',
+      sourcePostMessage
+    )
+    const msgPromises: Promise<any>[] = []
+    msgEvent.waitUntil = (p: Promise<any>) => { msgPromises.push(p) }
+    sw.handleMessage(msgEvent)
+    await Promise.all(msgPromises)
+
+    const state = await loadState()
+    expect(state!.arms['http://example.com/a']).toBeDefined()
+    expect(state!.arms['http://example.com/logout']).toBeUndefined()
+    expect(state!.arms['http://evil.com/pwn']).toBeUndefined()
+    expect(mockClients.matchAll).not.toHaveBeenCalled()
+    expect(sourcePostMessage).toHaveBeenCalled()
   })
 
   it('reward validates value range — rejects NaN', async () => {

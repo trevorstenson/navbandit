@@ -9,6 +9,10 @@ export interface BanditConfig {
   topK: number
   /** Drop arms not seen in this many navigations. Default: 50 */
   pruneAfter: number
+  /** Discard persisted model state older than this many ms. Default: 30 days */
+  maxStateAgeMs: number
+  /** Maximum validated URLs accepted from discovery messages. Default: 100 */
+  maxTrackedLinks: number
 }
 
 export interface ArmState {

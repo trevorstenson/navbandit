@@ -8,10 +8,13 @@ import {
   discoverLinks,
 } from './prefetch'
 import { checkBandwidth } from './bandwidth'
+import { sanitizePredictions } from './url-policy'
 
 export interface ClientOptions {
   /** Throttle interval (ms) for scroll depth reporting. Default: 1000 */
   scrollThrottleMs?: number
+  /** Maximum same-origin links to discover per page. Default: 100 */
+  maxDiscoverLinks?: number
 }
 
 /** Send a message to the controlling service worker */
@@ -25,7 +28,7 @@ function sendToSW(msg: any): void {
  * Returns a cleanup function.
  */
 export function createBanditClient(options?: ClientOptions): () => void {
-  const { scrollThrottleMs = 1000 } = options ?? {}
+  const { scrollThrottleMs = 1000, maxDiscoverLinks = 100 } = options ?? {}
   const useSpecRules = supportsSpeculationRules()
 
   // Handle predictions from SW
@@ -36,7 +39,10 @@ export function createBanditClient(options?: ClientOptions): () => void {
     const { shouldPrefetch, maxPrefetches } = checkBandwidth()
     if (!shouldPrefetch) return
 
-    const limited = msg.predictions.slice(0, maxPrefetches)
+    const limited = sanitizePredictions(msg.predictions, {
+      maxUrls: maxPrefetches,
+    }).slice(0, maxPrefetches)
+    if (limited.length === 0) return
 
     if (useSpecRules) {
       insertSpeculationRules(limited)
@@ -49,7 +55,7 @@ export function createBanditClient(options?: ClientOptions): () => void {
 
   // Discover links once page is loaded
   function onLoad() {
-    const urls = discoverLinks()
+    const urls = discoverLinks({ maxLinks: maxDiscoverLinks })
     if (urls.length > 0) {
       sendToSW({ type: 'navbandit:discover-links', urls })
     }

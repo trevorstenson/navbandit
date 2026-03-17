@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NavBandit Benchmark Results</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 2rem;
+    }
+    h1 { color: #58a6ff; margin-bottom: 0.5rem; font-size: 1.8rem; }
+    .subtitle { color: #8b949e; margin-bottom: 2rem; }
+    .controls {
+      margin-bottom: 2rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+    .controls label { color: #8b949e; }
+    .controls select, .controls input[type="file"] {
+      background: #161b22;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+      padding: 0.4rem 0.8rem;
+      border-radius: 6px;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1.2rem;
+    }
+    .card .label { color: #8b949e; font-size: 0.85rem; margin-bottom: 0.3rem; }
+    .card .value { font-size: 1.4rem; font-weight: 600; }
+    .card .value.blue { color: #58a6ff; }
+    .card .value.green { color: #3fb950; }
+    .card .value.red { color: #f85149; }
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+      margin-bottom: 2rem;
+    }
+    .chart-container {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+    .chart-container h3 { margin-bottom: 1rem; color: #e6edf3; }
+    .chart-container canvas { max-height: 350px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    th, td { padding: 0.7rem 1rem; text-align: left; border-bottom: 1px solid #21262d; }
+    th { background: #161b22; color: #8b949e; font-weight: 600; }
+    td { font-variant-numeric: tabular-nums; }
+    .empty-state {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: #8b949e;
+    }
+    .empty-state p { margin-bottom: 1rem; }
+    .empty-state code {
+      background: #161b22;
+      padding: 0.3rem 0.6rem;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    @media (max-width: 900px) {
+      .charts { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <h1>NavBandit Benchmark</h1>
+  <p class="subtitle">UCB1 Multi-Armed Bandit vs Heuristic Prefetching Strategies</p>
+
+  <div class="controls">
+    <label>Load results:</label>
+    <input type="file" id="fileInput" accept=".json" />
+    <span id="status" style="color: #8b949e; font-size: 0.85rem;"></span>
+  </div>
+
+  <div id="content">
+    <div class="empty-state">
+      <p>No benchmark results loaded.</p>
+      <p>Run <code>npm run bench:full</code> to generate results, then load the JSON file above.</p>
+      <p>Or run <code>npm run bench -- --output results.json</code> for default settings.</p>
+    </div>
+  </div>
+
+  <script type="module" src="/src/viz/app.ts"></script>
+</body>
+</html>

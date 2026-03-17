@@ -2,8 +2,11 @@ import type { BanditConfig, BanditState, ClientMessage, Prediction } from './typ
 import { createArm, selectTopK, update } from './linucb'
 import { buildContext, type ContextMetadata } from './context'
 import { loadState, saveState } from './store'
+import { normalizePrefetchUrl, sanitizePredictions, sanitizePrefetchUrls } from './url-policy'
 
 declare const self: ServiceWorkerGlobalScope
+
+const DEFAULT_MAX_STATE_AGE_MS = 30 * 24 * 60 * 60 * 1000
 
 const DEFAULTS: BanditConfig = {
   alpha: 1.0,
@@ -11,11 +14,21 @@ const DEFAULTS: BanditConfig = {
   dimensions: 8,
   topK: 3,
   pruneAfter: 50,
+  maxStateAgeMs: DEFAULT_MAX_STATE_AGE_MS,
+  maxTrackedLinks: 100,
 }
 
 export function createBanditSW(userConfig?: Partial<BanditConfig>) {
   const config = { ...DEFAULTS, ...userConfig }
-  const { dimensions: d, alpha, discount, topK, pruneAfter } = config
+  const {
+    dimensions: d,
+    alpha,
+    discount,
+    topK,
+    pruneAfter,
+    maxStateAgeMs,
+    maxTrackedLinks,
+  } = config
 
   let state: BanditState | null = null
   let lastPredictions: Prediction[] = []
@@ -28,7 +41,7 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
 
   async function ensureState(): Promise<BanditState> {
     if (!state) {
-      state = await loadState()
+      state = await loadState(maxStateAgeMs)
       if (!state) {
         state = {
           arms: {},
@@ -38,7 +51,11 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
       }
       // Restore visitedUrls set from arm keys
       for (const url of Object.keys(state.arms)) {
-        meta.visitedUrls!.add(url)
+        const normalized = normalizePrefetchUrl(url, {
+          origin: self.location.origin,
+          allowDangerousPaths: true,
+        })
+        if (normalized) meta.visitedUrls!.add(normalized)
       }
     }
     return state
@@ -52,10 +69,22 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
     }
   }
 
+  async function postPredictions(
+    client: Pick<Client, 'postMessage'>,
+    predictions: Prediction[]
+  ): Promise<void> {
+    const safePredictions = sanitizePredictions(predictions, {
+      origin: self.location.origin,
+      maxUrls: topK,
+    })
+    if (safePredictions.length === 0) return
+    client.postMessage({ type: 'navbandit:predictions', predictions: safePredictions })
+  }
+
   async function broadcastPredictions(predictions: Prediction[]): Promise<void> {
     const clients = await self.clients.matchAll({ type: 'window' })
     for (const client of clients) {
-      client.postMessage({ type: 'navbandit:predictions', predictions })
+      await postPredictions(client, predictions)
     }
   }
 
@@ -67,7 +96,11 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
     const purpose = event.request.headers.get('Sec-Purpose') || event.request.headers.get('Purpose')
     if (purpose === 'prefetch') return
 
-    const url = event.request.url
+    const url = normalizePrefetchUrl(event.request.url, {
+      origin: self.location.origin,
+      allowDangerousPaths: true,
+    })
+    if (!url) return
 
     event.waitUntil(
       (async () => {
@@ -103,7 +136,10 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
 
         // Generate predictions
         const ctx = buildContext(url, meta)
-        lastPredictions = selectTopK(s.arms, ctx, topK, alpha)
+        lastPredictions = sanitizePredictions(selectTopK(s.arms, ctx, topK, alpha), {
+          origin: self.location.origin,
+          maxUrls: topK,
+        })
 
         // Broadcast to clients
         await broadcastPredictions(lastPredictions)
@@ -124,7 +160,12 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
 
         switch (msg.type) {
           case 'navbandit:discover-links': {
-            for (const url of msg.urls) {
+            const urls = sanitizePrefetchUrls(msg.urls, {
+              origin: self.location.origin,
+              maxUrls: maxTrackedLinks,
+            })
+
+            for (const url of urls) {
               if (!s.arms[url]) {
                 s.arms[url] = createArm(d)
                 s.arms[url].lastSeen = s.totalPulls
@@ -133,11 +174,20 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
             // Re-score with new arms and broadcast
             if (meta.lastNavTime) {
               const ctx = buildContext(
-                (event.source as WindowClient | null)?.url ?? '',
+                normalizePrefetchUrl((event.source as WindowClient | null)?.url ?? '', {
+                  origin: self.location.origin,
+                  allowDangerousPaths: true,
+                }) ?? '',
                 meta
               )
-              lastPredictions = selectTopK(s.arms, ctx, topK, alpha)
-              await broadcastPredictions(lastPredictions)
+              lastPredictions = sanitizePredictions(selectTopK(s.arms, ctx, topK, alpha), {
+                origin: self.location.origin,
+                maxUrls: topK,
+              })
+              const source = event.source as (WindowClient & Pick<Client, 'postMessage'>) | null
+              if (source) {
+                await postPredictions(source, lastPredictions)
+              }
             }
             await saveState(s)
             break
@@ -145,16 +195,22 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
           case 'navbandit:reward': {
             const value = msg.value
             if (!Number.isFinite(value) || value < 0 || value > 1) break
-            const arm = s.arms[msg.url]
+            const url = normalizePrefetchUrl(msg.url, {
+              origin: self.location.origin,
+              allowDangerousPaths: true,
+            })
+            if (!url) break
+            const arm = s.arms[url]
             if (arm) {
-              const ctx = buildContext(msg.url, meta)
+              const ctx = buildContext(url, meta)
               update(arm, ctx, value, discount)
               await saveState(s)
             }
             break
           }
           case 'navbandit:scroll-depth': {
-            meta.scrollDepth = msg.depth
+            if (!Number.isFinite(msg.depth)) break
+            meta.scrollDepth = Math.min(1, Math.max(0, msg.depth))
             break
           }
         }

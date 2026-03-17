@@ -72,4 +72,18 @@ describe('IDB Store', () => {
     await clearState()
     expect(await loadState()).toBeNull()
   })
+
+  it('expires stale persisted state when maxAgeMs is exceeded', async () => {
+    await saveState(
+      {
+        arms: { '/stale': createArm(4) },
+        totalPulls: 1,
+        sessionId: 'stale-test',
+      },
+      0
+    )
+
+    expect(await loadState(1)).toBeNull()
+    expect(await loadState()).toBeNull()
+  })
 })

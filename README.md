@@ -10,7 +10,7 @@ Learns which pages to prefetch by watching how users navigate your site. One scr
 
 That's it. NavBandit will automatically:
 
-1. Discover same-origin links on each page
+1. Discover safe same-origin links on each page
 2. Learn which links users actually click (per page)
 3. Prefetch the most likely next pages before the user clicks
 4. Get smarter with every navigation
@@ -27,7 +27,9 @@ NavBandit uses a [UCB1 bandit algorithm](https://en.wikipedia.org/wiki/Multi-arm
 
 **Bandwidth-aware**: Respects `navigator.connection.saveData` and `effectiveType`. Backs off or disables prefetching on slow connections — the model still learns from clicks, so it's ready when bandwidth returns.
 
-**State**: Persists in `localStorage` across sessions. Each arm stores just 3 numbers (pulls, rewards, lastSeen), so the footprint is tiny.
+**State**: Persists in browser storage with automatic expiry. Each arm stores just 3 numbers (pulls, rewards, lastSeen), so the footprint is tiny.
+
+**Safety defaults**: NavBandit skips cross-origin links, links with query strings or fragments, non-`_self` targets, `download` links, and clearly destructive route patterns like logout/delete. Add `data-navbandit-prefetch="true"` to explicitly allow a safe route that would otherwise be skipped, or `data-navbandit="false"` to opt out of discovery.
 
 ## npm Install
 
@@ -78,6 +80,8 @@ const cleanup = createBanditClient()
 | `dimensions` | `8` | Context vector size |
 | `topK` | `3` | URLs to prefetch per navigation |
 | `pruneAfter` | `50` | Drop arms not seen in this many navigations |
+| `maxStateAgeMs` | `2592000000` | Expire persisted SW state after this many ms |
+| `maxTrackedLinks` | `100` | Maximum validated links accepted from a discovery message |
 
 ## Browser support
 

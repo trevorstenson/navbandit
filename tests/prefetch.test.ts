@@ -56,6 +56,7 @@ describe('prefetch', () => {
     mockDoc = createMockDocument()
     vi.stubGlobal('document', mockDoc)
     vi.stubGlobal('HTMLScriptElement', { supports: () => false })
+    vi.stubGlobal('location', { origin: 'http://example.com', pathname: '/' })
   })
 
   afterEach(() => {
@@ -108,8 +109,8 @@ describe('prefetch', () => {
       insertPrefetchLinks(['/a', '/b'])
       const links = mockDoc._elements.filter((e: any) => e.rel === 'prefetch')
       expect(links).toHaveLength(2)
-      expect(links[0].href).toBe('/a')
-      expect(links[1].href).toBe('/b')
+      expect(links[0].href).toBe('http://example.com/a')
+      expect(links[1].href).toBe('http://example.com/b')
     })
 
     it('removes previous links before inserting', () => {
@@ -117,7 +118,7 @@ describe('prefetch', () => {
       insertPrefetchLinks(['/b'])
       const links = mockDoc._elements.filter((e: any) => e.rel === 'prefetch')
       expect(links).toHaveLength(1)
-      expect(links[0].href).toBe('/b')
+      expect(links[0].href).toBe('http://example.com/b')
     })
   })
 
