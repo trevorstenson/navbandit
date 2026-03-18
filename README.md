@@ -1,6 +1,6 @@
 # navbandit
 
-Learns which pages to prefetch by watching how users navigate your site. One script tag, zero config, under 1.5KB gzipped.
+Learns which pages to prefetch by watching how users navigate your site. One script tag, zero config, under 3KB gzipped.
 
 ## Quick Start
 
@@ -17,7 +17,7 @@ That's it. NavBandit will automatically:
 
 ## How it works
 
-NavBandit uses a [UCB1 bandit algorithm](https://en.wikipedia.org/wiki/Multi-armed_bandit#Upper_confidence_bound) to balance exploration (trying uncertain links) with exploitation (prefetching links that have been clicked before). Each page maintains its own set of arms — so predictions from `/pricing` are independent of predictions from `/docs`.
+NavBandit uses [Thompson Sampling](https://en.wikipedia.org/wiki/Thompson_sampling) — a Bayesian algorithm that balances exploration (trying uncertain links) with exploitation (prefetching links that have been clicked before). Each page maintains its own set of arms — so predictions from `/pricing` are independent of predictions from `/docs`. A [UCB1](https://en.wikipedia.org/wiki/Multi-armed_bandit#Upper_confidence_bound) strategy is also available as a drop-in alternative.
 
 **Prefetch strategy** (best available method, detected automatically):
 
@@ -27,7 +27,7 @@ NavBandit uses a [UCB1 bandit algorithm](https://en.wikipedia.org/wiki/Multi-arm
 
 **Bandwidth-aware**: Respects `navigator.connection.saveData` and `effectiveType`. Backs off or disables prefetching on slow connections — the model still learns from clicks, so it's ready when bandwidth returns.
 
-**State**: Persists in browser storage with automatic expiry. Each arm stores just 3 numbers (pulls, rewards, lastSeen), so the footprint is tiny.
+**State**: Persists in browser storage with automatic expiry. Each arm stores just 3 numbers (alpha, beta, lastSeen), so the footprint is tiny.
 
 **Safety defaults**: NavBandit skips cross-origin links, links with query strings or fragments, non-`_self` targets, `download` links, and clearly destructive route patterns like logout/delete. Add `data-navbandit-prefetch="true"` to explicitly allow a safe route that would otherwise be skipped, or `data-navbandit="false"` to opt out of discovery.
 

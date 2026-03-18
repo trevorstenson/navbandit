@@ -1,7 +1,7 @@
 {
   "name": "navbandit",
   "version": "0.2.0",
-  "description": "Contextual bandit prefetching — learns which pages to prefetch per-user in real-time via LinUCB + Speculation Rules API",
+  "description": "Adaptive prefetching — learns which pages to prefetch using Bayesian Thompson Sampling + Speculation Rules API",
   "type": "module",
   "repository": {
     "type": "git",
