@@ -54,6 +54,11 @@ export interface TrialResult {
   bandwidthKB: number
   convergenceNav: number | null
   hitRateOverTime: number[]
+  // Latency metrics (present when network config provided)
+  expectedLatencyMs?: number
+  p50LatencyMs?: number
+  p95LatencyMs?: number
+  instantNavRate?: number
 }
 
 export interface StrategyStats {
@@ -70,12 +75,38 @@ export interface BenchmarkResult {
   metadata: { timestamp: string; seed: number }
 }
 
+export interface NetworkConfig {
+  label: string
+  bandwidthMbps: number
+  rttMs: number
+  maxParallelConnections: number
+}
+
+export interface PageWeightConfig {
+  label: string
+  pageSizeKB: number
+}
+
+export interface ScenarioConfig {
+  network: NetworkConfig
+  pageWeight: PageWeightConfig
+}
+
+export interface NavLatencyResult {
+  actualLatencyMs: number
+  isHit: boolean
+  isInstant: boolean
+  contentionFactor: number
+}
+
 export interface RunnerConfig {
   site: Site
   trafficMatrix: TrafficMatrix
   navigations: NavigationStep[]
   k: number
   alpha: number
+  network?: NetworkConfig
+  pageWeight?: PageWeightConfig
 }
 
 export interface BenchConfig {
@@ -86,4 +117,18 @@ export interface BenchConfig {
   k: number
   alpha: number
   seed: number
+  network?: NetworkConfig
+  pageWeight?: PageWeightConfig
+}
+
+export interface SweepResult {
+  topology: TopologyConfig
+  traffic: TrafficConfig
+  trials: number
+  navigationsPerTrial: number
+  scenarios: Array<{
+    scenario: ScenarioConfig
+    strategies: Record<StrategyId, StrategyStats>
+  }>
+  metadata: { timestamp: string; seed: number }
 }

@@ -85,19 +85,27 @@ export class Simulator extends EventTarget {
     this.stepCount++
     const step = this.stepCount
 
-    // Check for reward — was this URL predicted?
+    // Full-information feedback: always reward the actual destination
     let rewarded = false
     const prevPage = this.pages[this.currentPage]
     if (prevPage) {
+      // Always reward the clicked arm
+      const destArm = prevPage.arms[url]
+      if (destArm) {
+        destArm.rewards++
+        destArm.pulls++
+        prevPage.totalPulls++
+        rewarded = this.lastPredictions.includes(url)
+      }
+
+      // Penalize predictions that weren't followed
       for (const predUrl of this.lastPredictions) {
-        const arm = prevPage.arms[predUrl]
-        if (arm) {
-          if (predUrl === url) {
-            arm.rewards++
-            rewarded = true
+        if (predUrl !== url) {
+          const arm = prevPage.arms[predUrl]
+          if (arm) {
+            arm.pulls++
+            prevPage.totalPulls++
           }
-          arm.pulls++
-          prevPage.totalPulls++
         }
       }
     }

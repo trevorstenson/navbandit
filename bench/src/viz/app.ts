@@ -1,21 +1,25 @@
 import { renderCharts, renderCards, renderTable } from './charts.js'
-import type { BenchmarkResult } from '../types.js'
+import { renderSweepHeatmap, renderSweepDetails } from './sweep-charts.js'
+import type { BenchmarkResult, SweepResult } from '../types.js'
 
 const fileInput = document.getElementById('fileInput') as HTMLInputElement
 const content = document.getElementById('content') as HTMLDivElement
 const status = document.getElementById('status') as HTMLSpanElement
 
-// Try to load results.json automatically
+// Try to load results.json and sweep-results.json automatically
 async function tryAutoLoad() {
-  try {
-    const resp = await fetch('/results.json')
-    if (resp.ok) {
-      const data = await resp.json()
-      loadData(data)
-      status.textContent = 'Auto-loaded results.json'
+  for (const file of ['sweep-results.json', 'results.json']) {
+    try {
+      const resp = await fetch(`/${file}`)
+      if (resp.ok) {
+        const data = await resp.json()
+        loadData(data)
+        status.textContent = `Auto-loaded ${file}`
+        return
+      }
+    } catch {
+      // Try next
     }
-  } catch {
-    // No auto-load available
   }
 }
 
@@ -33,10 +37,19 @@ fileInput.addEventListener('change', async () => {
   }
 })
 
-function loadData(data: BenchmarkResult | BenchmarkResult[]) {
-  const results = Array.isArray(data) ? data : [data]
+function isSweepResult(data: any): data is SweepResult {
+  return data && Array.isArray(data.scenarios) && data.scenarios[0]?.scenario?.network
+}
 
+function loadData(data: any) {
   content.innerHTML = ''
+
+  if (isSweepResult(data)) {
+    loadSweepData(data)
+    return
+  }
+
+  const results: BenchmarkResult[] = Array.isArray(data) ? data : [data]
 
   for (const result of results) {
     const section = document.createElement('div')
@@ -70,6 +83,35 @@ function loadData(data: BenchmarkResult | BenchmarkResult[]) {
 
     content.appendChild(section)
   }
+}
+
+function loadSweepData(data: SweepResult) {
+  const section = document.createElement('div')
+
+  const heading = document.createElement('h2')
+  heading.style.color = '#e6edf3'
+  heading.style.marginBottom = '0.5rem'
+  heading.textContent = `Scenario Sweep: ${data.topology.archetype.toUpperCase()}`
+  section.appendChild(heading)
+
+  const subtitle = document.createElement('p')
+  subtitle.style.color = '#8b949e'
+  subtitle.style.marginBottom = '2rem'
+  subtitle.textContent = `${data.trials} trials × ${data.navigationsPerTrial} navigations | ${data.scenarios.length} scenarios`
+  section.appendChild(subtitle)
+
+  // Heatmap
+  renderSweepHeatmap(data, section)
+
+  // Full details table
+  const detailsHeading = document.createElement('h3')
+  detailsHeading.style.color = '#e6edf3'
+  detailsHeading.style.margin = '1.5rem 0 1rem'
+  detailsHeading.textContent = 'All Scenarios'
+  section.appendChild(detailsHeading)
+  renderSweepDetails(data, section)
+
+  content.appendChild(section)
 }
 
 tryAutoLoad()

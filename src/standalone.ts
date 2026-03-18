@@ -4,7 +4,7 @@ import { prefetch, discoverLinks } from './prefetch'
 
 const STORAGE_KEY = 'navbandit'
 const SESSION_KEY = 'navbandit:last'
-const DEFAULT_ALPHA = 1.5
+const DEFAULT_ALPHA = 0.5
 const DEFAULT_TOP_K = 3
 const PRUNE_AFTER = 50
 const STORAGE_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -174,22 +174,22 @@ function init(): void {
   const path = currentPath()
   state.totalNavigations++
 
-  // Record reward from previous navigation
+  // Record reward from previous navigation (full-information feedback)
   const session = loadSession()
   if (session && session.predictions.length > 0) {
     const fromPage = state.pages[session.fromPath]
     if (fromPage) {
       const fullUrl = location.origin + path
-      const wasHit = session.predictions.includes(fullUrl)
-      if (wasHit) {
-        const arm = fromPage.arms[fullUrl]
-        if (arm) {
-          arm.rewards++
-          arm.pulls++
-          fromPage.totalPulls++
-        }
+
+      // Always reward the actual destination — even if it wasn't predicted
+      const destArm = fromPage.arms[fullUrl]
+      if (destArm) {
+        destArm.rewards++
+        destArm.pulls++
+        fromPage.totalPulls++
       }
-      // Record miss for predictions that weren't followed
+
+      // Penalize predictions that weren't followed
       for (const predUrl of session.predictions) {
         if (predUrl !== fullUrl) {
           const arm = fromPage.arms[predUrl]
@@ -209,10 +209,14 @@ function init(): void {
     const urls = discoverLinks({ maxLinks: 100 })
     const page = ensurePage(state, path)
 
-    // Ensure arms exist for all discovered links
+    // Ensure arms exist for all discovered links (weak uniform prior)
+    const linkCount = urls.length
     for (const url of urls) {
       if (!page.arms[url]) {
-        page.arms[url] = createArm(state.totalNavigations)
+        const arm = createArm(state.totalNavigations)
+        arm.pulls = 1
+        arm.rewards = 1 / linkCount
+        page.arms[url] = arm
       }
       page.arms[url].lastSeen = state.totalNavigations
     }

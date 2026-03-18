@@ -106,16 +106,11 @@ export function createBanditSW(userConfig?: Partial<BanditConfig>) {
       (async () => {
         const s = await ensureState()
 
-        // Record reward for any matching prediction
-        for (const pred of lastPredictions) {
-          if (pred.url === url) {
-            const arm = s.arms[pred.url]
-            if (arm) {
-              const ctx = buildContext(pred.url, meta)
-              update(arm, ctx, 1.0, discount)
-            }
-            break
-          }
+        // Full-information feedback: always reward the actual destination
+        const destArm = s.arms[url]
+        if (destArm) {
+          const ctx = buildContext(url, meta)
+          update(destArm, ctx, 1.0, discount)
         }
 
         // Update metadata

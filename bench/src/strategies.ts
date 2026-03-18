@@ -25,10 +25,14 @@ export class NavBanditStrategy implements Strategy {
     }
     const state = this.pageState[currentPage]
 
-    // Add new arms for links we haven't seen
+    // Add new arms for links we haven't seen (weak uniform prior)
+    const linkCount = availableLinks.length
     for (const link of availableLinks) {
       if (!state.arms[link]) {
-        state.arms[link] = createArm(this.navCount)
+        const arm = createArm(this.navCount)
+        arm.pulls = 1
+        arm.rewards = 1 / linkCount
+        state.arms[link] = arm
       }
     }
 
@@ -51,13 +55,17 @@ export class NavBanditStrategy implements Strategy {
 
     const state = this.pageState[this.lastPage]
 
-    // Update rewards: 1 for the arm that was clicked, 0 for others that were prefetched
-    // totalPulls incremented per arm (matches demo/src/simulator.ts lines 92-102)
+    // Full-information feedback: always reward the actual destination
+    const destArm = state.arms[destination]
+    if (destArm) {
+      destArm.rewards++
+      destArm.pulls++
+      state.totalPulls++
+    }
+
+    // Penalize prefetched arms that weren't clicked
     for (const prefetched of this.lastPrefetched) {
-      if (state.arms[prefetched]) {
-        if (prefetched === destination) {
-          state.arms[prefetched].rewards++
-        }
+      if (prefetched !== destination && state.arms[prefetched]) {
         state.arms[prefetched].pulls++
         state.totalPulls++
       }
